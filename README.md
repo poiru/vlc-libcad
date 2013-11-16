@@ -1,0 +1,1 @@
+*libcad* is a VLC media player plugin that adds support for [Rainmeter](http://rainmeter.net/) and [CD Art Display](http://cdartdisplay.com/) skins.
