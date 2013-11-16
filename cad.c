@@ -138,7 +138,7 @@ static void Close(vlc_object_t* p_this)
 static int InputEvent(
 	vlc_object_t* p_this, const char* var, vlc_value_t oldval, vlc_value_t val, void* p_data)
 { 
-	input_thread_t* const p_input = (input_thread_t *)p_this;
+	input_thread_t* const p_input = (input_thread_t*)p_this;
 	intf_thread_t* const p_intf = (intf_thread_t*)p_data;
 	intf_sys_t* const p_sys = p_intf->p_sys;
 
@@ -195,6 +195,7 @@ static int PlaylistEvent(
 	return VLC_SUCCESS;
 }
 
+// Helper thread that creates the CAD window and processes messages.
 static void* Thread(void* p_data)
 {
 	intf_thread_t* const p_intf = (intf_thread_t*)p_data;
@@ -332,7 +333,7 @@ static LRESULT HandleCadMessage(intf_thread_t* p_intf, HWND hwnd, WPARAM wParam,
 	case IPC_GET_VOLUME:
 		{
 			// VLC can return a volume larger than 100% so we need to cap it to 100 here.
-			const float volume = playlist_VolumeGet( pl_Get(p_intf->p_libvlc)) * 100.0f;
+			const float volume = playlist_VolumeGet(pl_Get(p_intf->p_libvlc)) * 100.0f;
 			return (LRESULT)min(volume, 100.0f);
 		}
 
@@ -407,13 +408,11 @@ static LRESULT HandleCadMessage(intf_thread_t* p_intf, HWND hwnd, WPARAM wParam,
 
 	case IPC_GET_STATE:
 		{
-			switch (playlist_Status(pl_Get(p_intf->p_libvlc)))
-			{
-			case PLAYLIST_RUNNING: return 1;
-			case PLAYLIST_PAUSED: return 2;
-			default: return 0;
-			}
-
+			const int status = playlist_Status(pl_Get(p_intf->p_libvlc));
+			return
+				status == PLAYLIST_RUNNING ? 1 :
+				status == PLAYLIST_PAUSED ? 2 :
+				0;
 		}
 
 	case IPC_SHUTDOWN_NOTIFICATION:
@@ -505,7 +504,6 @@ static LRESULT HandleCadMessage(intf_thread_t* p_intf, HWND hwnd, WPARAM wParam,
 	return 0;
 }
 
-// Event callback.
 static LRESULT CALLBACK WindowProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 {
 	intf_thread_t* const p_intf = (intf_thread_t*)GetWindowLongPtr(hwnd, GWLP_USERDATA);
