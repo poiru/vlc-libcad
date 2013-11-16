@@ -105,7 +105,7 @@ static void Close(vlc_object_t* p_this)
 
 	if (!p_sys)
 	{
-		// This instance was not initialized as there was already another instance active.
+		// This instance was never initialized in Open() as there was already a libcad instance open.
 		return;
 	}
 
@@ -135,7 +135,6 @@ static void Close(vlc_object_t* p_this)
 	free(p_intf->p_sys);
 }
 
-// Playlist item change callback.
 static int InputEvent(
 	vlc_object_t* p_this, const char* var, vlc_value_t oldval, vlc_value_t val, void* p_data)
 { 
@@ -173,7 +172,7 @@ static int InputEvent(
 	return VLC_SUCCESS;
 }
 
-// Input change callback.
+// Called when the playing item changes.
 static int PlaylistEvent(
 	vlc_object_t* p_this, const char* var, vlc_value_t oldval, vlc_value_t val, void* p_data)
 {
@@ -187,6 +186,8 @@ static int PlaylistEvent(
 		p_sys->p_input = NULL;
 	}
 
+	// Add a callback for the input events so that we can receive a notification when the item
+	// metadata has been parsed and when the playlist state changes.
 	p_sys->p_input = (input_thread_t*)val.p_address;
 	var_AddCallback(p_sys->p_input, "intf-event", InputEvent, p_intf);
 	vlc_object_hold(p_sys->p_input);
@@ -224,9 +225,9 @@ static void* Thread(void* p_data)
 	typedef BOOL (WINAPI * FPCHANGEWINDOWMESSAGEFILTEREX)(
 		HWND hWnd, UINT message, DWORD dwFlag, PCHANGEFILTERSTRUCT pChangeFilterStruct);
 
-	HMODULE user32 = GetModuleHandle(L"user32.dll");
 	// WM_USER needs to be removed from the filtered messages. To do so, try
 	// ChangeWindowMessageFilterEx first (for Windows 7 and later).
+	HMODULE user32 = GetModuleHandle(L"user32.dll");
 	auto changeWindowMessageFilterEx =
 		(FPCHANGEWINDOWMESSAGEFILTEREX)GetProcAddress(user32, "ChangeWindowMessageFilterEx");
 	if (changeWindowMessageFilterEx)
@@ -330,6 +331,7 @@ static LRESULT HandleCadMessage(intf_thread_t* p_intf, HWND hwnd, WPARAM wParam,
 
 	case IPC_GET_VOLUME:
 		{
+			// VLC can return a volume larger than 100% so we need to cap it to 100 here.
 			const float volume = playlist_VolumeGet( pl_Get(p_intf->p_libvlc)) * 100.0f;
 			return (LRESULT)min(volume, 100.0f);
 		}
@@ -386,7 +388,7 @@ static LRESULT HandleCadMessage(intf_thread_t* p_intf, HWND hwnd, WPARAM wParam,
 
 	case IPC_SET_RATING:
 		{
-			// Send back 0.
+			// VLC does not support ratings so send back 0.
 			PostMessage(p_sys->cad_window, WM_USER, 0, IPC_RATING_CHANGED_NOTIFICATION);
 			return 0;
 		}
@@ -434,6 +436,9 @@ static LRESULT HandleCadMessage(intf_thread_t* p_intf, HWND hwnd, WPARAM wParam,
 			char buffer[DATA_MAX_LENGTH];
 			int buffer_len = 0;
 
+			// If the i sstarts with file://, we assume that it is a local file and detailed
+			// metadata is available. Otherwise, we assume it to be a network stream (i.e. radio)
+			// with limited info (only a title).
 			char* const file = decode_URI(input_item_GetURI(p_item));
 			if (strncmp(file, "file://", 7) == 0)
 			{
@@ -450,7 +455,7 @@ static LRESULT HandleCadMessage(intf_thread_t* p_intf, HWND hwnd, WPARAM wParam,
 					album ? album : "",
 					duration,
 					file ? &file[8] : "",
-					cover ? &cover[8] : "");  // skip the file://
+					cover ? &cover[8] : "");  // Skip the "file://" part.
 
 				free(title);
 				free(artist);
