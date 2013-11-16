@@ -46,12 +46,10 @@ vlc_module_end()
 // Module instance data.
 struct intf_sys_t
 {
-	vlc_thread_t thread;
-	vlc_mutex_t lock;
 	HWND window;
 	HWND cad_window;
-
-	int i_id;
+	vlc_thread_t thread;
+	vlc_mutex_t lock;
 	input_thread_t* p_input;
 };
 
@@ -288,8 +286,7 @@ static LRESULT HandleCadMessage(intf_thread_t* p_intf, HWND hwnd, WPARAM wParam,
 	{
 	case IPC_PLAY:
 		{
-			playlist_t* p_playlist = pl_Get(p_intf->p_libvlc);
-			playlist_Play(p_playlist);
+			playlist_Play(pl_Get(p_intf->p_libvlc));
 			return 1;
 		}
 
@@ -303,57 +300,47 @@ static LRESULT HandleCadMessage(intf_thread_t* p_intf, HWND hwnd, WPARAM wParam,
 
 	case IPC_PAUSE:
 		{
-			playlist_t* p_playlist = pl_Get(p_intf->p_libvlc);
-			playlist_Pause(p_playlist);
+			playlist_Pause(pl_Get(p_intf->p_libvlc));
 			return 1;
 		}
 
 	case IPC_STOP:
 		{
-			playlist_t* p_playlist = pl_Get(p_intf->p_libvlc);
-			playlist_Stop(p_playlist);
+			playlist_Stop(pl_Get(p_intf->p_libvlc));
 			return 1;
 		}
 			
 	case IPC_NEXT:
 		{
-			playlist_t* p_playlist = pl_Get(p_intf->p_libvlc);
-			playlist_Next(p_playlist);
+			playlist_Next(pl_Get(p_intf->p_libvlc));
 			return 1;
 		}
 
 	case IPC_PREVIOUS:
 		{
-			playlist_t* p_playlist = pl_Get(p_intf->p_libvlc);
-			playlist_Prev(p_playlist);
+			playlist_Prev(pl_Get(p_intf->p_libvlc));
 			return 1;
 		}
 
 	case IPC_SET_VOLUME:
 		{
-			playlist_t* p_playlist = pl_Get(p_intf->p_libvlc);
-			playlist_VolumeSet(
-				p_playlist,
-				(int)wParam / 100.0f);
+			playlist_VolumeSet(pl_Get(p_intf->p_libvlc), (int)wParam / 100.0f);
 			return 1;
 		}
 
 	case IPC_GET_VOLUME:
 		{
-			playlist_t* p_playlist = pl_Get(p_intf->p_libvlc);
-			const float volume = playlist_VolumeGet(p_playlist) * 100.0f;
+			const float volume = playlist_VolumeGet( pl_Get(p_intf->p_libvlc)) * 100.0f;
 			return (LRESULT)min(volume, 100.0f);
 		}
 
 	case IPC_GET_DURATION:
 		{
-			input_thread_t* p_input = pl_CurrentInput(p_intf->p_libvlc);
 			unsigned int duration = 0;
-			if (p_input)
+			if (p_sys->p_input)
 			{
-				input_item_t* p_item = input_GetItem(p_input);
+				input_item_t* const p_item = input_GetItem(p_sys->p_input);
 				duration = (unsigned int)(input_item_GetDuration(p_item) / 1000000);
-				vlc_object_release(p_input);
 			}
 			return duration;
 		}
@@ -361,22 +348,18 @@ static LRESULT HandleCadMessage(intf_thread_t* p_intf, HWND hwnd, WPARAM wParam,
 	case IPC_GET_POSITION:
 		{
 			int pos = 0;
-			input_thread_t* p_input = pl_CurrentInput(p_intf->p_libvlc);
-			if (p_input)
+			if (p_sys->p_input)
 			{
-				pos = (int)(var_GetTime(p_input, "time") / CLOCK_FREQ);
-				vlc_object_release(p_input);
+				pos = (int)(var_GetTime(p_sys->p_input, "time") / CLOCK_FREQ);
 			}
 			return pos;
 		}
 
 	case IPC_SET_POSITION:
 		{
-			input_thread_t* p_input = pl_CurrentInput(p_intf->p_libvlc);
-			if (p_input)
+			if (p_sys->p_input)
 			{
-				var_SetTime(p_input, "time", (int64_t)wParam * CLOCK_FREQ);
-				vlc_object_release(p_input);
+				var_SetTime(p_sys->p_input, "time", (int64_t)wParam * CLOCK_FREQ);
 			}
 			return 0;
 		}
@@ -422,17 +405,13 @@ static LRESULT HandleCadMessage(intf_thread_t* p_intf, HWND hwnd, WPARAM wParam,
 
 	case IPC_GET_STATE:
 		{
-			playlist_t* p_playlist = pl_Get(p_intf->p_libvlc);
-			if (p_playlist)
+			switch (playlist_Status(pl_Get(p_intf->p_libvlc)))
 			{
-				switch (playlist_Status(p_playlist))
-				{
-				case PLAYLIST_RUNNING: return 1;
-				case PLAYLIST_PAUSED: return 2;
-				}
+			case PLAYLIST_RUNNING: return 1;
+			case PLAYLIST_PAUSED: return 2;
+			default: return 0;
 			}
 
-			return 0;
 		}
 
 	case IPC_SHUTDOWN_NOTIFICATION:
@@ -449,10 +428,8 @@ static LRESULT HandleCadMessage(intf_thread_t* p_intf, HWND hwnd, WPARAM wParam,
 
 	case IPC_GET_CURRENT_TRACK:
 		{
-			input_thread_t* p_input = pl_CurrentInput(p_intf->p_libvlc);
-			if (!p_input) return 0;
-
-			input_item_t* p_item = input_GetItem(p_input);
+			if (!p_sys->p_input) return 0;
+			input_item_t* p_item = input_GetItem(p_sys->p_input);
 
 			char buffer[DATA_MAX_LENGTH];
 			int buffer_len = 0;
@@ -516,7 +493,6 @@ static LRESULT HandleCadMessage(intf_thread_t* p_intf, HWND hwnd, WPARAM wParam,
 					p_sys->cad_window, WM_COPYDATA, IPC_CURRENT_TRACK_NOTIFICATION, (LPARAM)&cds);
 			}
 
-			vlc_object_release(p_input);
 			return 1;
 		}
 	}
