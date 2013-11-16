@@ -16,11 +16,12 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston MA 02110-1301, USA.
  *****************************************************************************/
 
-/* Hacks to compile the plugin out-of-tree. */
-#define LIBVLC_USE_PTHREAD_CANCEL
+// Hacks to compile the plugin out-of-tree.
 #define __PLUGIN__
+#define LIBVLC_USE_PTHREAD_CANCEL
 #include <BaseTsd.h>
 typedef SSIZE_T ssize_t;
 
-/* The MS Visual C compiler is so outdated that we need to compile cad.c as C++... */
+// The VLC header files do not work with the outdated MS Visual C compiler so we need to compile
+// cad as C++.
 #include "cad.c"
